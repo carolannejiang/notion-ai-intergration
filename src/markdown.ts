@@ -59,6 +59,35 @@ function textBlock(type: string, content: string): object {
   return { object: "block", type, [type]: { rich_text: inlineToRichText(content) } };
 }
 
+// Notion rejects code blocks whose language is outside its fixed enum, which
+// would fail the whole append; map common fence aliases and fall back to plain text.
+const CODE_LANGUAGES = new Set([
+  "abap", "arduino", "bash", "basic", "c", "clojure", "coffeescript", "c++", "c#", "css",
+  "dart", "diff", "docker", "elixir", "elm", "erlang", "flow", "fortran", "f#", "gherkin",
+  "glsl", "go", "graphql", "groovy", "haskell", "html", "java", "javascript", "json",
+  "julia", "kotlin", "latex", "less", "lisp", "livescript", "lua", "makefile", "markdown",
+  "markup", "matlab", "mermaid", "nix", "objective-c", "ocaml", "pascal", "perl", "php",
+  "plain text", "powershell", "prolog", "protobuf", "python", "r", "reason", "ruby",
+  "rust", "sass", "scala", "scheme", "scss", "shell", "sql", "swift", "typescript",
+  "vb.net", "verilog", "vhdl", "visual basic", "webassembly", "xml", "yaml",
+]);
+
+const CODE_LANGUAGE_ALIASES: Record<string, string> = {
+  js: "javascript", jsx: "javascript", mjs: "javascript", node: "javascript",
+  ts: "typescript", tsx: "typescript",
+  py: "python", rb: "ruby", golang: "go", cpp: "c++", cs: "c#",
+  sh: "shell", zsh: "shell", console: "shell", dockerfile: "docker",
+  md: "markdown", yml: "yaml", tex: "latex", objc: "objective-c",
+  plaintext: "plain text", text: "plain text", txt: "plain text",
+};
+
+function codeLanguage(raw: string): string {
+  const lang = raw.trim().toLowerCase();
+  if (!lang) return "plain text";
+  const mapped = CODE_LANGUAGE_ALIASES[lang] ?? lang;
+  return CODE_LANGUAGES.has(mapped) ? mapped : "plain text";
+}
+
 /** Plain markdown (headings, bullets, numbered lists, quotes, code fences) → Notion blocks. */
 export function markdownToBlocks(markdown: string): object[] {
   const blocks: object[] = [];
@@ -71,7 +100,7 @@ export function markdownToBlocks(markdown: string): object[] {
       continue;
     }
     if (line.startsWith("```")) {
-      const language = line.slice(3).trim() || "plain text";
+      const language = codeLanguage(line.slice(3));
       const code: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {

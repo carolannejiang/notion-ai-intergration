@@ -45,7 +45,7 @@ poller instead of webhooks so no public URL is needed.
   each page's block tree, list comments on the page id **and every block id**
   (inline comments attach to blocks; there is no workspace-wide comments
   endpoint), diff against seen ids in `.state.json`. New comments that start
-  with the trigger phrase (default `@agent`, case-insensitive) or @-mention the
+  with the trigger phrase (default `/agent`, case-insensitive) or @-mention the
   bot user, and aren't authored by the bot, start an agent run. First run with
   no state file indexes everything silently (prevents answering stale comments).
   Bot-author check prevents self-trigger loops.
@@ -79,8 +79,8 @@ poller instead of webhooks so no public URL is needed.
   recursive, depth-capped at 3, skips descending into child pages/databases.
   `updateBlockText` only accepts text-bearing block types and replaces
   `rich_text` wholesale. All rich text is chunked at 1900 chars (Notion caps
-  2000 per item). `appendBlocks` batches 100 children per request and passes
-  `after` only on the first batch.
+  2000 per item). `appendBlocks` batches 100 children per request; when inserting
+  after a block, later batches chain `after` the previous batch's last block.
 - `src/markdown.ts` — two-way conversion. Blocks → one line per block in the
   form `[<blockId>] <prefix><text>`, children indented; the bracketed id is how
   the model addresses blocks in tool calls. Markdown → blocks supports
@@ -98,7 +98,7 @@ poller instead of webhooks so no public URL is needed.
   cycle and up-to-one-interval latency. Acceptable for a handful of pages.
 - **Trigger phrase, not bot mention only** — Notion's comment composer doesn't
   reliably let you @-mention an integration bot, so prefix matching on
-  `@agent` is the primary trigger; a real user-mention of the bot id also
+  `/agent` is the primary trigger; a real user-mention of the bot id also
   works if it ever occurs.
 - **`@notionhq/client` pinned to ^2.2.15** (installed 2.3.0) — v5.x of the SDK
   reshuffled database endpoints; nothing here needs it. Note the deep type

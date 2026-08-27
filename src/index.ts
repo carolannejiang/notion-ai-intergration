@@ -5,6 +5,9 @@ import { checkPage, createWatcher, persist } from "./watcher.js";
 async function main(): Promise<void> {
   const watcher = await createWatcher();
   let firstRun = watcher.freshState;
+  // Pages whose silent first pass failed stay silent until one succeeds, so a
+  // transient error during indexing can't cause old comments to be answered.
+  const unindexed = new Set<string>();
 
   console.log(
     `[agent] watching for comments starting with "${config.trigger}" ` +
@@ -23,13 +26,16 @@ async function main(): Promise<void> {
         : await discoverPages(config.maxDiscoveredPages);
 
       for (const page of pages) {
+        const silent = firstRun || unindexed.has(page.id);
         try {
-          await checkPage(watcher, page, !firstRun);
+          await checkPage(watcher, page, !silent);
+          unindexed.delete(page.id);
+          persist(watcher);
         } catch (err) {
+          if (silent) unindexed.add(page.id);
           console.error(`[agent] failed to poll "${page.title}":`, err);
         }
       }
-      persist(watcher);
       firstRun = false;
     } catch (err) {
       console.error("[agent] poll cycle failed:", err);

@@ -141,13 +141,17 @@ export async function appendBlocks(
   children: object[],
   afterBlockId?: string,
 ): Promise<void> {
+  let after = afterBlockId;
   for (let i = 0; i < children.length; i += 100) {
     await pace();
-    await notion.blocks.children.append({
+    const res = await notion.blocks.children.append({
       block_id: pageId,
       children: children.slice(i, i + 100) as never,
-      ...(i === 0 && afterBlockId ? { after: afterBlockId } : {}),
+      ...(after ? { after } : {}),
     });
+    // When inserting mid-page, later batches must chain after the last created
+    // block or they'd land at the page end, splitting the insertion.
+    after = after ? res.results[res.results.length - 1]?.id : undefined;
   }
 }
 
