@@ -17,7 +17,7 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   maxDiscoveredPages: Number(process.env.MAX_DISCOVERED_PAGES ?? 5),
-  webhookPort: Number(process.env.WEBHOOK_PORT ?? 8787),
+  webhookPort: Number(process.env.WEBHOOK_PORT ?? process.env.PORT ?? 8787),
   webhookSecret: process.env.NOTION_WEBHOOK_SECRET || undefined,
-  stateFile: fileURLToPath(new URL("../.state.json", import.meta.url)),
+  stateFile: process.env.STATE_FILE ?? fileURLToPath(new URL("../.state.json", import.meta.url)),
 };
