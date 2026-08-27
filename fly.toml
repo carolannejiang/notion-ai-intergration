@@ -1,0 +1,19 @@
+# Fly.io config — webhook mode, always-on single machine.
+# The machine must NOT auto-stop: agent runs continue after the webhook
+# request is acked, and a stopped machine misses event deliveries.
+
+app = "notion-comment-agent"
+primary_region = "sjc"
+
+[build]
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
