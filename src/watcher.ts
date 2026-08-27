@@ -49,7 +49,7 @@ function isTriggered(comment: CommentObjectResponse, botId: string): boolean {
   const trigger = config.trigger.toLowerCase();
   if (text.startsWith(trigger)) {
     // the trigger must end the comment or be followed by a non-word character,
-    // so "@agent" doesn't fire on "@agents meeting at 3"
+    // so "/agent" doesn't fire on "/agents meeting at 3"
     const rest = text.slice(trigger.length);
     if (rest === "" || /^[^\p{L}\p{N}]/u.test(rest)) return true;
   }

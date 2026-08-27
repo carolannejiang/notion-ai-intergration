@@ -1,7 +1,7 @@
 # notion-agent
 
 A Claude agent that lives in your Notion comments. Summon it by writing a comment
-starting with `@agent` (configurable) on any watched page — it reads the page and
+starting with `/agent` (configurable) on any watched page — it reads the page and
 the comment threads, replies in-thread, and can edit or append page content when
 asked.
 
@@ -43,7 +43,7 @@ Optional settings in `.env`:
 - `WATCH_PAGE_IDS` — comma-separated page IDs to watch (the 32-char hex ID from
   the page URL). If empty, the agent auto-discovers the most recently edited
   pages shared with the integration (`MAX_DISCOVERED_PAGES`, default 5).
-- `AGENT_TRIGGER` — the summoning phrase (default `@agent`).
+- `AGENT_TRIGGER` — the summoning phrase (default `/agent`).
 - `POLL_INTERVAL_MS` — poll cadence (default 60s).
 
 ### 4. Run
@@ -62,9 +62,9 @@ trigger phrase gets a response.
 Write a comment anywhere on a watched page — inline on a text selection or in the
 page-level comment box:
 
-> `@agent summarize the meeting notes above into 3 bullets and add them under "Summary"`
+> `/agent summarize the meeting notes above into 3 bullets and add them under "Summary"`
 
-> `@agent does the plan in this section conflict with the timeline at the top?`
+> `/agent does the plan in this section conflict with the timeline at the top?`
 
 The agent replies in the same thread; if the comment asked for a change, it also
 edits the page (replacing a block's text or inserting new markdown blocks).

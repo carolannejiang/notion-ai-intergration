@@ -18,7 +18,7 @@ function numeric(name: string, fallback: number): number {
 export const config = {
   notionToken: required("NOTION_TOKEN"),
   model: process.env.AGENT_MODEL || undefined,
-  trigger: process.env.AGENT_TRIGGER ?? "@agent",
+  trigger: process.env.AGENT_TRIGGER ?? "/agent",
   pollIntervalMs: numeric("POLL_INTERVAL_MS", 60_000),
   watchPageIds: (process.env.WATCH_PAGE_IDS ?? "")
     .split(",")
