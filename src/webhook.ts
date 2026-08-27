@@ -42,11 +42,23 @@ async function main(): Promise<void> {
   const watcher = await createWatcher();
   const titleCache = new Map<string, string>();
 
-  // Startup sweep. Fresh state: index existing comments silently so old threads
-  // are never answered. Existing state: respond, so comments posted while the
-  // server was down (whose events were lost) still get picked up.
-  {
-    const catchUp = !watcher.freshState;
+  // Serialize page checks so concurrent events can't double-run the agent.
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (job: (w: Watcher) => Promise<void>) => {
+    queue = queue
+      .then(() => job(watcher))
+      .then(() => persist(watcher))
+      .catch((err) => console.error("[webhook] event handling failed:", err));
+  };
+
+  // Startup sweep — fresh state: index existing comments silently so old
+  // threads are never answered; existing state: respond, so comments posted
+  // while the server was down (whose events were lost) still get picked up.
+  // It runs as the FIRST queued job so the HTTP server can start listening
+  // immediately: events arriving mid-sweep queue behind it instead of being
+  // refused while the sweep runs.
+  enqueue(async (w) => {
+    const catchUp = !w.freshState;
     console.log(
       catchUp
         ? "[webhook] startup: catch-up sweep for comments missed while offline"
@@ -67,24 +79,14 @@ async function main(): Promise<void> {
     }
     for (const page of pages) {
       try {
-        await checkPage(watcher, page, catchUp);
+        await checkPage(w, page, catchUp);
         titleCache.set(normalize(page.id), page.title);
       } catch (err) {
         console.error(`[webhook] startup: failed to check "${page.title}":`, err);
       }
     }
-    persist(watcher);
     console.log("[webhook] startup sweep done");
-  }
-
-  // Serialize page checks so concurrent events can't double-run the agent.
-  let queue: Promise<void> = Promise.resolve();
-  const enqueue = (job: (w: Watcher) => Promise<void>) => {
-    queue = queue
-      .then(() => job(watcher))
-      .then(() => persist(watcher))
-      .catch((err) => console.error("[webhook] event handling failed:", err));
-  };
+  });
 
   const server = http.createServer((req, res) => {
     if (req.method !== "POST") {
