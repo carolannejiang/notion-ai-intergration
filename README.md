@@ -77,7 +77,8 @@ edits the page (replacing a block's text or inserting new markdown blocks).
   authored by the bot itself) start an agent run.
 - Agent (`src/agent.ts`): a Claude Agent SDK run with in-process MCP tools —
   `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`,
-  `refetch_page` — and everything else (shell, files, web) disallowed. If the
+  `refetch_page` — plus read-only web access (`WebSearch`/`WebFetch`);
+  everything else (shell, files) is disallowed. If the
   model doesn't reply in-thread itself, its final text is posted as the reply
   so a summons never goes unanswered.
 - Notion layer (`src/notion.ts`, `src/markdown.ts`): rate-limited (~3 req/s)
