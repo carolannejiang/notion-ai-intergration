@@ -46,7 +46,13 @@ export function persist(watcher: Watcher): void {
 
 function isTriggered(comment: CommentObjectResponse, botId: string): boolean {
   const text = plainText(comment.rich_text).trim().toLowerCase();
-  if (text.startsWith(config.trigger.toLowerCase())) return true;
+  const trigger = config.trigger.toLowerCase();
+  if (text.startsWith(trigger)) {
+    // the trigger must end the comment or be followed by a non-word character,
+    // so "@agent" doesn't fire on "@agents meeting at 3"
+    const rest = text.slice(trigger.length);
+    if (rest === "" || /^[^\p{L}\p{N}]/u.test(rest)) return true;
+  }
   return comment.rich_text.some(
     (t) => t.type === "mention" && t.mention.type === "user" && t.mention.user.id === botId,
   );

@@ -41,6 +41,9 @@ function verifySignature(rawBody: string, header: string | undefined): boolean {
 async function main(): Promise<void> {
   const watcher = await createWatcher();
   const titleCache = new Map<string, string>();
+  // Pages whose fresh-state silent indexing failed during the startup sweep:
+  // their next check must also be silent, or old comments would be answered.
+  const needsSilentIndex = new Set<string>();
 
   // Serialize page checks so concurrent events can't double-run the agent.
   let queue: Promise<void> = Promise.resolve();
@@ -82,6 +85,7 @@ async function main(): Promise<void> {
         await checkPage(w, page, catchUp);
         titleCache.set(normalize(page.id), page.title);
       } catch (err) {
+        if (!catchUp) needsSilentIndex.add(normalize(page.id));
         console.error(`[webhook] startup: failed to check "${page.title}":`, err);
       }
     }
@@ -140,7 +144,12 @@ async function main(): Promise<void> {
                 config.watchPageIds.map(async (id) => ({ id, title: await getPageTitle(id) })),
               )
             : await discoverPages(config.maxDiscoveredPages);
-          for (const page of pages) await checkPage(w, page, true);
+          for (const page of pages) {
+            const key = normalize(page.id);
+            const silent = needsSilentIndex.has(key);
+            await checkPage(w, page, !silent);
+            if (silent) needsSilentIndex.delete(key);
+          }
         });
         return;
       }
@@ -159,12 +168,21 @@ async function main(): Promise<void> {
           title = await getPageTitle(pageId);
           titleCache.set(normalized, title);
         }
-        await checkPage(w, { id: pageId, title }, true);
+        const silent = needsSilentIndex.has(normalized);
+        await checkPage(w, { id: pageId, title }, !silent);
+        if (silent) needsSilentIndex.delete(normalized);
       });
     });
   });
 
   server.listen(config.webhookPort, () => {
+    if (!config.webhookSecret) {
+      console.warn(
+        "[webhook] WARNING: NOTION_WEBHOOK_SECRET is unset — incoming events are not " +
+          "signature-verified, so anyone who finds this URL can trigger Notion API sweeps. " +
+          "Set it to the verification token Notion sends when registering the webhook.",
+      );
+    }
     console.log(
       `[webhook] listening on port ${config.webhookPort} for comment.created events ` +
         `(trigger phrase "${config.trigger}")`,

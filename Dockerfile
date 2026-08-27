@@ -1,7 +1,8 @@
 FROM node:22-slim
 
-# Claude Code CLI — the Agent SDK drives it; auth via CLAUDE_CODE_OAUTH_TOKEN
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code CLI — the Agent SDK drives it; auth via CLAUDE_CODE_OAUTH_TOKEN.
+# Pinned so image builds are reproducible; bump deliberately.
+RUN npm install -g @anthropic-ai/claude-code@2.1.247
 
 WORKDIR /app
 COPY package.json package-lock.json ./

@@ -96,6 +96,8 @@ edits the page (replacing a block's text or inserting new markdown blocks).
 - Tables are readable (rendered as rows) but not editable; databases and synced
   blocks are read as placeholders. Replies and page edits support inline
   markdown (bold, italic, code, strikethrough, links).
+- Block nesting is only fetched 4 levels deep; comments on blocks nested deeper
+  are never seen, so a summons there gets no reply.
 
 ## Webhook mode (instant responses)
 

@@ -79,8 +79,8 @@ poller instead of webhooks so no public URL is needed.
   recursive, depth-capped at 3, skips descending into child pages/databases.
   `updateBlockText` only accepts text-bearing block types and replaces
   `rich_text` wholesale. All rich text is chunked at 1900 chars (Notion caps
-  2000 per item). `appendBlocks` batches 100 children per request and passes
-  `after` only on the first batch.
+  2000 per item). `appendBlocks` batches 100 children per request; when inserting
+  after a block, later batches chain `after` the previous batch's last block.
 - `src/markdown.ts` — two-way conversion. Blocks → one line per block in the
   form `[<blockId>] <prefix><text>`, children indented; the bracketed id is how
   the model addresses blocks in tool calls. Markdown → blocks supports
