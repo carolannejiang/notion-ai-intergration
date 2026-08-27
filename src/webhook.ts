@@ -52,14 +52,26 @@ async function main(): Promise<void> {
         ? "[webhook] startup: catch-up sweep for comments missed while offline"
         : "[webhook] first run: indexing existing comments without responding",
     );
-    const pages: WatchPage[] = config.watchPageIds.length
-      ? await Promise.all(
-          config.watchPageIds.map(async (id) => ({ id, title: await getPageTitle(id) })),
-        )
-      : await discoverPages(config.maxDiscoveredPages);
+    // Guard every Notion call: a single failing page (revoked share, stale id,
+    // transient API error) must degrade the sweep, not crash the entrypoint
+    // into a container restart loop.
+    let pages: WatchPage[] = [];
+    try {
+      pages = config.watchPageIds.length
+        ? await Promise.all(
+            config.watchPageIds.map(async (id) => ({ id, title: await getPageTitle(id) })),
+          )
+        : await discoverPages(config.maxDiscoveredPages);
+    } catch (err) {
+      console.error("[webhook] startup: failed to resolve pages:", err);
+    }
     for (const page of pages) {
-      await checkPage(watcher, page, catchUp);
-      titleCache.set(normalize(page.id), page.title);
+      try {
+        await checkPage(watcher, page, catchUp);
+        titleCache.set(normalize(page.id), page.title);
+      } catch (err) {
+        console.error(`[webhook] startup: failed to check "${page.title}":`, err);
+      }
     }
     persist(watcher);
     console.log("[webhook] startup sweep done");

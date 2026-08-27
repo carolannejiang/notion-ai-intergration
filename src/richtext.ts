@@ -24,7 +24,7 @@ export function rawRichText(text: string): RichTextItem[] {
 }
 
 const INLINE_RE =
-  /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\*([^*\s][^*\n]*)\*|~~([^~\n]+)~~|\[([^\]\n]+)\]\(((?:https?|mailto):[^\s)]+)\)/g;
+  /`([^`\n]+)`|\*\*([^*\n]+)\*\*|\*([^*\s](?:[^*\n]*[^*\s])?)\*|~~([^~\n]+)~~|\[([^\]\n]+)\]\(((?:https?|mailto):[^\s)]+)\)/g;
 
 /** Parse inline markdown into annotated Notion rich_text items. */
 export function inlineToRichText(text: string): RichTextItem[] {
