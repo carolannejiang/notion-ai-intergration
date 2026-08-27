@@ -54,9 +54,11 @@ poller instead of webhooks so no public URL is needed.
   **Claude Agent SDK** (`query()` + in-process MCP tools via
   `createSdkMcpServer`/`tool`) so runs bill the owner's Claude subscription
   (Claude Code login) instead of the API. `ANTHROPIC_API_KEY` unset →
-  subscription; set → API billing. `permissionMode: "dontAsk"` with only the
-  five `mcp__notion__*` tools allowed; built-ins (Bash/Read/Write/web) are
-  disallowed. `AGENT_MODEL` env picks the model (blank = Claude Code default).
+  subscription; set → API billing. `permissionMode: "dontAsk"` with the
+  five `mcp__notion__*` tools plus WebSearch/WebFetch allowed; other built-ins
+  (Bash/Read/Write/Edit) are disallowed — web is read-only capability; shell
+  and filesystem stay off deliberately, since an injection with Bash could
+  read the tokens from the container env. Don't enable them. `AGENT_MODEL` env picks the model (blank = Claude Code default).
   Note: `delete process.env.CLAUDECODE` at module top is required when the
   poller is launched from inside a Claude Code session. A closure flag tracks
   whether the trigger thread got a reply; if not, the run's final text is
