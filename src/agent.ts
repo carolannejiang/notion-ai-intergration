@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
+import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
 import {
   appendBlocks,
   createPageComment,
@@ -8,11 +8,16 @@ import {
   updateBlockText,
 } from "./notion.js";
 import { blocksToMarkdown, markdownToBlocks } from "./markdown.js";
+import { config } from "./config.js";
 
-const anthropic = new Anthropic();
+// The Agent SDK spawns a `claude` subprocess, which refuses to start inside a
+// Claude Code session; this var is only set when the poller itself was launched
+// from one, so dropping it is safe.
+delete process.env.CLAUDECODE;
 
 const SYSTEM_PROMPT = `You are an assistant embedded in the user's Notion workspace. You are
-summoned when someone addresses you in a comment on a Notion page. You act on that one page.
+summoned when someone addresses you in a comment on a Notion page. You act on that one page,
+using only the notion tools provided.
 
 The page is given to you as one line per block in the form "[<blockId>] <text>", with children
 indented. The bracketed ids are real Notion block ids — use them when a tool asks for a block id.
@@ -39,97 +44,76 @@ export interface AgentRunInput {
   triggerDiscussionId: string;
 }
 
+const textResult = (text: string) => ({ content: [{ type: "text" as const, text }] });
+
 export async function runAgent(input: AgentRunInput): Promise<void> {
   let repliedToThread = false;
 
-  const tools = [
-    betaTool({
-      name: "reply_to_comment",
-      description:
+  const notionServer = createSdkMcpServer({
+    name: "notion",
+    version: "1.0.0",
+    tools: [
+      tool(
+        "reply_to_comment",
         "Reply in a Notion comment thread. Use the discussion id of the thread that summoned you unless replying to a different thread shown in the context.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          discussion_id: { type: "string", description: "The discussion id of the thread" },
-          text: { type: "string", description: "Plain-text reply" },
+        {
+          discussion_id: z.string().describe("The discussion id of the thread"),
+          text: z.string().describe("Plain-text reply"),
         },
-        required: ["discussion_id", "text"],
-        additionalProperties: false,
-      },
-      run: async ({ discussion_id, text }: { discussion_id: string; text: string }) => {
-        await replyToDiscussion(discussion_id, text);
-        if (discussion_id === input.triggerDiscussionId) repliedToThread = true;
-        return "Reply posted.";
-      },
-    }),
-    betaTool({
-      name: "append_blocks",
-      description:
+        async ({ discussion_id, text }) => {
+          await replyToDiscussion(discussion_id, text);
+          if (discussion_id === input.triggerDiscussionId) repliedToThread = true;
+          return textResult("Reply posted.");
+        },
+      ),
+      tool(
+        "append_blocks",
         "Append new content to the page as Notion blocks. Accepts plain markdown. Optionally insert after a specific top-level block id; otherwise appends at the end of the page.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          markdown: { type: "string", description: "Markdown content to insert" },
-          after_block_id: {
-            type: "string",
-            description: "Optional top-level block id to insert after",
-          },
+        {
+          markdown: z.string().describe("Markdown content to insert"),
+          after_block_id: z.string().optional().describe("Optional top-level block id to insert after"),
         },
-        required: ["markdown"],
-        additionalProperties: false,
-      },
-      run: async ({ markdown, after_block_id }: { markdown: string; after_block_id?: string }) => {
-        const blocks = markdownToBlocks(markdown);
-        if (blocks.length === 0) return "No content to insert.";
-        await appendBlocks(input.pageId, blocks, after_block_id);
-        return `Inserted ${blocks.length} block(s).`;
-      },
-    }),
-    betaTool({
-      name: "update_block",
-      description:
+        async ({ markdown, after_block_id }) => {
+          const blocks = markdownToBlocks(markdown);
+          if (blocks.length === 0) return textResult("No content to insert.");
+          await appendBlocks(input.pageId, blocks, after_block_id);
+          return textResult(`Inserted ${blocks.length} block(s).`);
+        },
+      ),
+      tool(
+        "update_block",
         "Replace the text of one existing block (paragraph, heading, list item, quote, to-do, toggle, or callout). The new text fully replaces the old.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          block_id: { type: "string", description: "The block id from the page listing" },
-          text: { type: "string", description: "The complete new text for the block" },
+        {
+          block_id: z.string().describe("The block id from the page listing"),
+          text: z.string().describe("The complete new text for the block"),
         },
-        required: ["block_id", "text"],
-        additionalProperties: false,
-      },
-      run: async ({ block_id, text }: { block_id: string; text: string }) => {
-        await updateBlockText(block_id, text);
-        return "Block updated.";
-      },
-    }),
-    betaTool({
-      name: "comment_on_page",
-      description:
+        async ({ block_id, text }) => {
+          await updateBlockText(block_id, text);
+          return textResult("Block updated.");
+        },
+      ),
+      tool(
+        "comment_on_page",
         "Start a NEW top-level comment thread on the page. Prefer reply_to_comment for responding to the thread that summoned you.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          text: { type: "string", description: "Plain-text comment" },
+        {
+          text: z.string().describe("Plain-text comment"),
         },
-        required: ["text"],
-        additionalProperties: false,
-      },
-      run: async ({ text }: { text: string }) => {
-        await createPageComment(input.pageId, text);
-        return "Comment posted.";
-      },
-    }),
-    betaTool({
-      name: "refetch_page",
-      description: "Re-fetch the page's current blocks (use after editing, or if a quote seems stale).",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      run: async () => {
-        const tree = await fetchBlockTree(input.pageId);
-        return blocksToMarkdown(tree) || "(the page is empty)";
-      },
-    }),
-  ];
+        async ({ text }) => {
+          await createPageComment(input.pageId, text);
+          return textResult("Comment posted.");
+        },
+      ),
+      tool(
+        "refetch_page",
+        "Re-fetch the page's current blocks (use after editing, or if a quote seems stale).",
+        {},
+        async () => {
+          const tree = await fetchBlockTree(input.pageId);
+          return textResult(blocksToMarkdown(tree) || "(the page is empty)");
+        },
+      ),
+    ],
+  });
 
   const prompt = [
     `Page: "${input.pageTitle}" (id: ${input.pageId})`,
@@ -146,24 +130,41 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
     `Handle this request now.`,
   ].join("\n");
 
-  const finalMessage = await anthropic.beta.messages.toolRunner({
-    model: "claude-opus-5",
-    max_tokens: 16000,
-    system: SYSTEM_PROMPT,
-    tools,
-    messages: [{ role: "user", content: prompt }],
-    max_iterations: 25,
+  let finalText = "";
+  const run = query({
+    prompt,
+    options: {
+      ...(config.model ? { model: config.model } : {}),
+      systemPrompt: SYSTEM_PROMPT,
+      mcpServers: { notion: notionServer },
+      strictMcpConfig: true,
+      settingSources: [],
+      permissionMode: "dontAsk",
+      allowedTools: [
+        "mcp__notion__reply_to_comment",
+        "mcp__notion__append_blocks",
+        "mcp__notion__update_block",
+        "mcp__notion__comment_on_page",
+        "mcp__notion__refetch_page",
+      ],
+      disallowedTools: [
+        "Task", "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+        "WebFetch", "WebSearch", "NotebookEdit", "TodoWrite",
+      ],
+      maxTurns: 25,
+    },
   });
 
+  for await (const message of run) {
+    if (message.type === "result") {
+      finalText = message.subtype === "success" ? message.result.trim() : "";
+    }
+  }
+
   if (!repliedToThread) {
-    const text = finalMessage.content
-      .filter((b): b is Extract<(typeof finalMessage.content)[number], { type: "text" }> => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
     await replyToDiscussion(
       input.triggerDiscussionId,
-      text || "I looked at this but wasn't able to produce a response. Please try rephrasing.",
+      finalText || "I looked at this but wasn't able to produce a response. Please try rephrasing.",
     );
   }
 }

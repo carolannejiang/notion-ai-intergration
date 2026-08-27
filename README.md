@@ -29,8 +29,14 @@ Sub-pages inherit access. The agent can only ever see pages you connect.
 
 ```sh
 cp .env.example .env
-# fill in NOTION_TOKEN and ANTHROPIC_API_KEY
+# fill in NOTION_TOKEN
 ```
+
+The agent runs on Claude via the **Claude Agent SDK**: if you're logged into
+Claude Code with a Pro/Max subscription, leave `ANTHROPIC_API_KEY` unset and
+usage draws from your subscription. Set `ANTHROPIC_API_KEY` to bill the
+Anthropic API instead. `AGENT_MODEL` picks the model (`opus`, `sonnet`,
+`haiku`, or a full model id; blank = your Claude Code default).
 
 Optional settings in `.env`:
 
@@ -69,10 +75,11 @@ edits the page (replacing a block's text or inserting new markdown blocks).
   list comments on the page and every block (inline comments attach to blocks),
   and diff against `.state.json`. New comments matching the trigger (and not
   authored by the bot itself) start an agent run.
-- Agent (`src/agent.ts`): Claude Opus with a tool loop —
+- Agent (`src/agent.ts`): a Claude Agent SDK run with in-process MCP tools —
   `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`,
-  `refetch_page`. If the model doesn't reply in-thread itself, its final text is
-  posted as the reply so a summons never goes unanswered.
+  `refetch_page` — and everything else (shell, files, web) disallowed. If the
+  model doesn't reply in-thread itself, its final text is posted as the reply
+  so a summons never goes unanswered.
 - Notion layer (`src/notion.ts`, `src/markdown.ts`): rate-limited (~3 req/s)
   wrappers; blocks render to one line per block as `[<blockId>] <text>` so the
   model can address specific blocks; agent-written markdown converts back to
@@ -86,11 +93,24 @@ edits the page (replacing a block's text or inserting new markdown blocks).
   replies to existing threads and posts page-level comments only.
 - No tracked suggestions — edits apply directly (the agent is prompted to prefer
   replying over editing unless the comment asks for a change).
-- Databases, tables, and synced blocks are read as placeholders, not edited.
+- Tables are readable (rendered as rows) but not editable; databases and synced
+  blocks are read as placeholders. Replies and page edits support inline
+  markdown (bold, italic, code, strikethrough, links).
 
-## Upgrade path
+## Webhook mode (instant responses)
 
-If polling gets too slow or you want instant responses: create a webhook
-subscription in the integration settings for `comment.created`, point it at a
-small HTTPS endpoint (or a tunnel), and call the same `runAgent()` from the
-handler — the poller and the agent layer are already separate.
+`npm run webhook` starts an HTTP server (port `WEBHOOK_PORT`, default 8787)
+that reacts to Notion `comment.created` events instead of polling:
+
+1. Expose the port publicly, e.g. `cloudflared tunnel --url http://localhost:8787`
+   (or ngrok). Note the HTTPS URL it prints.
+2. In the integration settings (notion.so/my-integrations → your integration →
+   **Webhooks**), create a subscription pointing at that URL and select the
+   `comment.created` event.
+3. Notion POSTs a `verification_token` — the server prints it; paste it into
+   the verification field in the integration settings. Also put it in
+   `NOTION_WEBHOOK_SECRET` in `.env` and restart to enable signature checks.
+
+On each event the server re-checks just the affected page, so responses start
+within seconds instead of a poll interval. The `.state.json` dedupe is shared
+with the poller — run one mode at a time.

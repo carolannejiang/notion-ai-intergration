@@ -5,6 +5,7 @@ import type {
   RichTextItemResponse,
 } from "@notionhq/client/build/src/api-endpoints.js";
 import { config } from "./config.js";
+import { inlineToRichText, type RichTextItem } from "./richtext.js";
 
 export const notion = new Client({ auth: config.notionToken });
 
@@ -113,18 +114,8 @@ export async function listComments(blockOrPageId: string): Promise<CommentObject
   return comments;
 }
 
-const COMMENT_CHUNK = 1900;
-
-function textChunks(text: string): string[] {
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += COMMENT_CHUNK) {
-    chunks.push(text.slice(i, i + COMMENT_CHUNK));
-  }
-  return chunks.length ? chunks : [""];
-}
-
-export function toRichText(text: string): Array<{ type: "text"; text: { content: string } }> {
-  return textChunks(text).map((content) => ({ type: "text" as const, text: { content } }));
+export function toRichText(text: string): RichTextItem[] {
+  return inlineToRichText(text);
 }
 
 export async function replyToDiscussion(discussionId: string, text: string): Promise<string> {

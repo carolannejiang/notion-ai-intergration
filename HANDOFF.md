@@ -23,11 +23,13 @@ poller instead of webhooks so no public URL is needed.
 ## Current state
 
 - **Code: complete and type-checked** (`npm run tsc` passes). Deps installed.
-- **Never run against a real workspace** — no live end-to-end test has happened,
-  because it needs the owner's Notion integration token and page connections.
-  Expect the first real run to be the actual integration test.
-- Nothing is committed to git (there is no repo here; `.gitignore` is ready if
-  you `git init`).
+- **Live-tested 2026-08-26** against the owner's workspace (page "study notes",
+  a database row): Q&A reply in-thread and a page edit (append Summary section)
+  both succeeded — first on the API backend, then again after the Agent SDK
+  port. Webhook mode and the rich-text/table rendering have NOT been
+  live-tested yet.
+- `.env` is configured (Notion token, watched page id). The owner's API key is
+  present but commented out — runs use the Claude subscription.
 
 ### What the owner still has to do (blockers to first run)
 
@@ -47,14 +49,31 @@ poller instead of webhooks so no public URL is needed.
   bot user, and aren't authored by the bot, start an agent run. First run with
   no state file indexes everything silently (prevents answering stale comments).
   Bot-author check prevents self-trigger loops.
-- `src/agent.ts` — one agent run per triggering comment. Uses
-  `@anthropic-ai/sdk` beta tool runner (`client.beta.messages.toolRunner`) with
-  model `claude-opus-5`, `max_tokens` 16000, `max_iterations` 25. Tools:
-  `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`,
-  `refetch_page` — all defined with `betaTool` (raw JSON schema, no zod).
-  A closure flag tracks whether the trigger thread got a reply; if not, the
-  model's final text is posted there as a fallback so a summons is never
-  silently dropped.
+- `src/agent.ts` — one agent run per triggering comment. Ported (2026-08-26,
+  after live testing) from the raw `@anthropic-ai/sdk` toolRunner to the
+  **Claude Agent SDK** (`query()` + in-process MCP tools via
+  `createSdkMcpServer`/`tool`) so runs bill the owner's Claude subscription
+  (Claude Code login) instead of the API. `ANTHROPIC_API_KEY` unset →
+  subscription; set → API billing. `permissionMode: "dontAsk"` with only the
+  five `mcp__notion__*` tools allowed; built-ins (Bash/Read/Write/web) are
+  disallowed. `AGENT_MODEL` env picks the model (blank = Claude Code default).
+  Note: `delete process.env.CLAUDECODE` at module top is required when the
+  poller is launched from inside a Claude Code session. A closure flag tracks
+  whether the trigger thread got a reply; if not, the run's final text is
+  posted there as a fallback so a summons is never silently dropped.
+- `src/watcher.ts` — the shared trigger loop (state, diff, isTriggered,
+  threadContext, checkPage), extracted from index.ts so the poller and webhook
+  server drive the same code.
+- `src/webhook.ts` — webhook mode (`npm run webhook`): HTTP server reacting to
+  `comment.created` events by re-checking the affected page. Handles the
+  `verification_token` handshake (prints it for pasting into the integration
+  settings) and optional `X-Notion-Signature` HMAC checks via
+  `NOTION_WEBHOOK_SECRET`. Never live-tested — needs a tunnel + subscription
+  registered in the integration settings. Poller and webhook share
+  `.state.json`; run one at a time.
+- `src/richtext.ts` — inline markdown (bold/italic/code/strike/links) →
+  Notion rich_text, used for comment replies and written blocks. Tables are
+  now readable (`table_row` renders as `| a | b |`).
 - `src/notion.ts` — Notion client wrappers. Global rate limiter (`pace()`,
   ~340ms min gap ≈ Notion's 3 req/s average limit). Block tree fetch is
   recursive, depth-capped at 3, skips descending into child pages/databases.

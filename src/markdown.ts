@@ -1,5 +1,6 @@
 import type { BlockObjectResponse, RichTextItemResponse } from "@notionhq/client/build/src/api-endpoints.js";
 import { plainText, type BlockNode } from "./notion.js";
+import { inlineToRichText, rawRichText } from "./richtext.js";
 
 function blockText(block: BlockObjectResponse): string {
   const data = (block as unknown as Record<string, { rich_text?: RichTextItemResponse[] }>)[
@@ -9,7 +10,9 @@ function blockText(block: BlockObjectResponse): string {
   if (block.type === "child_page") return `(sub-page: ${block.child_page.title})`;
   if (block.type === "divider") return "---";
   if (block.type === "image") return "(image)";
-  if (block.type === "table") return "(table)";
+  if (block.type === "table") return "(table — rows below)";
+  if (block.type === "table_row")
+    return `| ${block.table_row.cells.map((cell) => plainText(cell)).join(" | ")} |`;
   return `(unsupported block type: ${block.type})`;
 }
 
@@ -52,16 +55,8 @@ export function blocksToMarkdown(nodes: BlockNode[], indent = ""): string {
   return lines.join("\n");
 }
 
-function richText(content: string) {
-  const chunks: Array<{ type: "text"; text: { content: string } }> = [];
-  for (let i = 0; i < content.length; i += 1900) {
-    chunks.push({ type: "text", text: { content: content.slice(i, i + 1900) } });
-  }
-  return chunks.length ? chunks : [{ type: "text" as const, text: { content: "" } }];
-}
-
 function textBlock(type: string, content: string): object {
-  return { object: "block", type, [type]: { rich_text: richText(content) } };
+  return { object: "block", type, [type]: { rich_text: inlineToRichText(content) } };
 }
 
 /** Plain markdown (headings, bullets, numbered lists, quotes, code fences) → Notion blocks. */
@@ -87,7 +82,7 @@ export function markdownToBlocks(markdown: string): object[] {
       blocks.push({
         object: "block",
         type: "code",
-        code: { rich_text: richText(code.join("\n")), language },
+        code: { rich_text: rawRichText(code.join("\n")), language },
       });
       continue;
     }
