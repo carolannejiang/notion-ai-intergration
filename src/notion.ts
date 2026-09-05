@@ -168,6 +168,20 @@ const TEXT_BLOCK_TYPES = new Set([
   "callout",
 ]);
 
+// The model tends to copy the page listing's markdown marker ("- ", "1. ", …)
+// into update_block replacement text; the block type already renders it, so a
+// kept marker shows up doubled on the page. Strip one matching marker.
+const TYPE_MARKER: Record<string, RegExp> = {
+  bulleted_list_item: /^[-*] /,
+  numbered_list_item: /^\d+[.)] /,
+  quote: /^> /,
+  to_do: /^\[[ x]\] /i,
+  toggle: /^[-*] /,
+  heading_1: /^# /,
+  heading_2: /^## /,
+  heading_3: /^### /,
+};
+
 export async function updateBlockText(blockId: string, text: string): Promise<void> {
   await pace();
   const block = (await notion.blocks.retrieve({ block_id: blockId })) as BlockObjectResponse;
@@ -176,10 +190,12 @@ export async function updateBlockText(blockId: string, text: string): Promise<vo
       `Block ${blockId} has type "${block.type}", which does not support text replacement.`,
     );
   }
+  const marker = TYPE_MARKER[block.type];
+  const content = marker ? text.replace(marker, "") : text;
   await pace();
   await notion.blocks.update({
     block_id: blockId,
-    [block.type]: { rich_text: toRichText(text) },
+    [block.type]: { rich_text: toRichText(content) },
   } as never);
 }
 

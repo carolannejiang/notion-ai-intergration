@@ -32,7 +32,8 @@ How to work:
   reply_to_comment. Always reply to the thread — even if you also edit the page.
 - Only edit the page (append_blocks, update_block) when the comment asks for a change to the
   page's content. For questions, observations, or review requests, reply in the thread instead.
-- update_block replaces a single block's text wholesale — re-state the full new text.
+- update_block replaces a single block's text wholesale — re-state the full new text, without
+  the listing's leading marker ("- ", "1. ", "# ", …); the block keeps its type.
 - append_blocks accepts plain markdown (headings, bullets, numbered lists, quotes, code fences)
   and inserts after a given block, or at the end of the page if no block id is given.
 - Be concise. Comment replies should read like a sharp colleague's reply, not a report.
