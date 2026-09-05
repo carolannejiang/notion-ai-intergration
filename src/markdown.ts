@@ -41,15 +41,24 @@ function blockPrefix(block: BlockObjectResponse): string {
 }
 
 /**
- * One line per block: `[<blockId>] <text>`, children indented two spaces.
+ * One line per block: `[<id>] <text>`, children indented two spaces.
  * The bracketed id is what the agent passes to update_block / append_blocks.
+ * `label` maps a real block id to the id shown in the listing (default: the
+ * raw id); the agent run passes a short-handle mapper so the model never has
+ * to copy 36-char UUIDs.
  */
-export function blocksToMarkdown(nodes: BlockNode[], indent = ""): string {
+export function blocksToMarkdown(
+  nodes: BlockNode[],
+  label: (blockId: string) => string = (id) => id,
+  indent = "",
+): string {
   const lines: string[] = [];
   for (const node of nodes) {
-    lines.push(`${indent}[${node.block.id}] ${blockPrefix(node.block)}${blockText(node.block)}`);
+    lines.push(
+      `${indent}[${label(node.block.id)}] ${blockPrefix(node.block)}${blockText(node.block)}`,
+    );
     if (node.children.length) {
-      lines.push(blocksToMarkdown(node.children, indent + "  "));
+      lines.push(blocksToMarkdown(node.children, label, indent + "  "));
     }
   }
   return lines.join("\n");

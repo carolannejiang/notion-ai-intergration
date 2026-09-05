@@ -10,7 +10,6 @@ import {
   userName,
   type WatchPage,
 } from "./notion.js";
-import { blocksToMarkdown } from "./markdown.js";
 import { runAgent } from "./agent.js";
 
 interface State {
@@ -117,7 +116,7 @@ export async function checkPage(
       await runAgent({
         pageId: page.id,
         pageTitle: page.title,
-        pageMarkdown: blocksToMarkdown(tree),
+        pageTree: tree,
         threadContext: await threadContext(comments),
         triggerText: plainText(comment.rich_text),
         triggerAuthor: author,
