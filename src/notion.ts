@@ -165,6 +165,11 @@ export async function appendBlocks(
   }
 }
 
+export async function deleteBlock(blockId: string): Promise<void> {
+  await pace();
+  await notion.blocks.delete({ block_id: blockId });
+}
+
 const TEXT_BLOCK_TYPES = new Set([
   "paragraph",
   "heading_1",

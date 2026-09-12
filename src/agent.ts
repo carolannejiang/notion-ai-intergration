@@ -10,6 +10,7 @@ import {
   type BlockNode,
 } from "./notion.js";
 import { blocksToMarkdown, markdownToBlocks } from "./markdown.js";
+import { readMemory, remember } from "./memory.js";
 import { config } from "./config.js";
 
 // The Agent SDK spawns a `claude` subprocess, which refuses to start inside a
@@ -43,6 +44,14 @@ How to work:
 - Be concise. Comment replies should read like a sharp colleague's reply, not a report.
 - If the request is ambiguous or would require destroying content, say so in the thread and ask
   rather than guessing.`;
+
+const MEMORY_PROMPT = `
+Memory: you keep notes across runs on a separate notes page. Anything you have noted before is
+shown under "Things you have noted before". Use the remember tool to save things worth having
+next time: decisions made in discussion, the owner's preferences about how you should work or
+write, and facts you looked up that were hard to find. One short line per note; say which page
+it concerns if that matters. Do not save page content — it is already on the page — and do not
+note that you answered a question. Space is limited; the oldest notes drop off.`;
 
 export interface AgentRunInput {
   pageId: string;
@@ -86,6 +95,17 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
         `exactly as shown; call refetch_page to see the current listing.`,
     );
   const pageListing = blocksToMarkdown(input.pageTree, label);
+
+  const memoryEnabled = Boolean(config.memoryPageId);
+  let memory: string[] = [];
+  if (memoryEnabled) {
+    try {
+      memory = await readMemory();
+    } catch (err) {
+      // a misconfigured or unshared notes page must not block the run
+      console.error("[agent] could not read the memory page:", err);
+    }
+  }
 
   const notionServer = createSdkMcpServer({
     name: "notion",
@@ -162,6 +182,21 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
           return textResult("Comment posted on block.");
         },
       ),
+      ...(memoryEnabled
+        ? [
+            tool(
+              "remember",
+              "Save a short note to your notes page so future runs (on any page) can see it. Use for decisions, the owner's preferences, and hard-won facts — not page content.",
+              {
+                note: z.string().describe("One line to remember"),
+              },
+              async ({ note }) => {
+                await remember(note.trim());
+                return textResult("Noted.");
+              },
+            ),
+          ]
+        : []),
       tool(
         "refetch_page",
         "Re-fetch the page's current blocks (use after editing, or if a quote seems stale).",
@@ -183,6 +218,13 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
     `Comment threads on this page:`,
     input.threadContext,
     ``,
+    ...(memoryEnabled
+      ? [
+          `Things you have noted before:`,
+          memory.map((m) => `- ${m}`).join("\n") || "(nothing yet)",
+          ``,
+        ]
+      : []),
     `You were summoned by ${input.triggerAuthor} in discussion ${input.triggerDiscussionId}:`,
     `"${input.triggerText}"`,
     ``,
@@ -194,7 +236,7 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
     prompt,
     options: {
       ...(config.model ? { model: config.model } : {}),
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: memoryEnabled ? SYSTEM_PROMPT + MEMORY_PROMPT : SYSTEM_PROMPT,
       mcpServers: { notion: notionServer },
       strictMcpConfig: true,
       settingSources: [],
@@ -206,6 +248,7 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
         "mcp__notion__comment_on_page",
         "mcp__notion__comment_on_block",
         "mcp__notion__refetch_page",
+        ...(memoryEnabled ? ["mcp__notion__remember"] : []),
         "WebSearch",
         "WebFetch",
       ],

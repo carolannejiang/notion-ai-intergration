@@ -43,6 +43,11 @@ Optional settings in `.env`:
 - `WATCH_PAGE_IDS` — comma-separated page IDs to watch (the 32-char hex ID from
   the page URL). If empty, the agent auto-discovers the most recently edited
   pages shared with the integration (`MAX_DISCOVERED_PAGES`, default 5).
+- `MEMORY_PAGE_ID` — a Notion page (connected to the integration) the agent
+  uses as long-term memory: it re-reads the page's bullets on every run and can
+  add notes with a `remember` tool (decisions, your preferences, looked-up
+  facts). You can edit or delete notes there. Oldest notes drop off past
+  `MEMORY_MAX_NOTES` (default 100). Unset = no memory.
 - `AGENT_TRIGGER` — the summoning phrase (default `/agent`).
 - `POLL_INTERVAL_MS` — poll cadence (default 60s).
 
@@ -84,7 +89,7 @@ thread with `/agent` (or an @mention) to begin a fresh conversation.
   itself), start an agent run.
 - Agent (`src/agent.ts`): a Claude Agent SDK run with in-process MCP tools —
   `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`, `comment_on_block`,
-  `refetch_page` — plus read-only web access (`WebSearch`/`WebFetch`);
+  `refetch_page`, and `remember` when `MEMORY_PAGE_ID` is set — plus read-only web access (`WebSearch`/`WebFetch`);
   everything else (shell, files) is disallowed. If the
   model doesn't reply in-thread itself, its final text is posted as the reply
   so a summons never goes unanswered.
