@@ -136,6 +136,16 @@ export async function createPageComment(pageId: string, text: string): Promise<s
   return res.id;
 }
 
+export async function createBlockComment(blockId: string, text: string): Promise<string> {
+  await pace();
+  // Block parents are accepted by the API but missing from the SDK's request types.
+  const res = await notion.comments.create({
+    parent: { block_id: blockId },
+    rich_text: toRichText(text),
+  } as unknown as Parameters<typeof notion.comments.create>[0]);
+  return res.id;
+}
+
 export async function appendBlocks(
   pageId: string,
   children: object[],

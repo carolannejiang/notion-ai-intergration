@@ -104,8 +104,19 @@ export async function checkPage(
   for (const c of comments) watcher.seen.add(c.id);
   if (!respond) return;
 
+  // Threads the bot has already replied in work as a continuous chat: a later
+  // reply there only needs to start with "/" (any "/..." — not the full trigger
+  // phrase) to run the agent. Replies without it are left alone, so people can
+  // add context to the thread; the agent still sees them via threadContext on
+  // the next run. Derived from the fetched comments, so it needs no state.
+  const joined = new Set(
+    comments.filter((c) => c.created_by.id === watcher.botId).map((c) => c.discussion_id),
+  );
+  const continuesChat = (c: CommentObjectResponse) =>
+    joined.has(c.discussion_id) && plainText(c.rich_text).trimStart().startsWith("/");
   const triggered = fresh.filter(
-    (c) => c.created_by.id !== watcher.botId && isTriggered(c, watcher.botId),
+    (c) =>
+      c.created_by.id !== watcher.botId && (isTriggered(c, watcher.botId) || continuesChat(c)),
   );
   for (const comment of triggered) {
     const author = await userName(comment.created_by.id);

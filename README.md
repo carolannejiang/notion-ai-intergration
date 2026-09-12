@@ -69,14 +69,21 @@ page-level comment box:
 The agent replies in the same thread; if the comment asked for a change, it also
 edits the page (replacing a block's text or inserting new markdown blocks).
 
+Once the agent has replied in a thread, that thread is a continuous chat: a later
+reply there runs the agent if it starts with `/` (e.g. `/ok, now shorten it`), with
+the whole thread as context. Replies without a leading `/` are left alone, so
+others can add context to the thread without summoning the agent. Start a new
+thread with `/agent` (or an @mention) to begin a fresh conversation.
+
 ## How it works
 
 - Poller (`src/index.ts`): every interval, fetch each watched page's block tree,
   list comments on the page and every block (inline comments attach to blocks),
-  and diff against `.state.json`. New comments matching the trigger (and not
-  authored by the bot itself) start an agent run.
+  and diff against `.state.json`. New comments matching the trigger, or starting with
+  `/` in a thread the bot has already replied in (and not authored by the bot
+  itself), start an agent run.
 - Agent (`src/agent.ts`): a Claude Agent SDK run with in-process MCP tools —
-  `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`,
+  `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`, `comment_on_block`,
   `refetch_page` — plus read-only web access (`WebSearch`/`WebFetch`);
   everything else (shell, files) is disallowed. If the
   model doesn't reply in-thread itself, its final text is posted as the reply

@@ -2,6 +2,7 @@ import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod";
 import {
   appendBlocks,
+  createBlockComment,
   createPageComment,
   fetchBlockTree,
   replyToDiscussion,
@@ -32,6 +33,9 @@ How to work:
   reply_to_comment. Always reply to the thread — even if you also edit the page.
 - Only edit the page (append_blocks, update_block) when the comment asks for a change to the
   page's content. For questions, observations, or review requests, reply in the thread instead.
+- When asked to answer questions or leave feedback "at" or "next to" specific places in the page,
+  use comment_on_block with that block's id — one comment per block. Do not insert answers into
+  the page as new blocks unless explicitly asked to edit the page.
 - update_block replaces a single block's text wholesale — re-state the full new text, without
   the listing's leading marker ("- ", "1. ", "# ", …); the block keeps its type.
 - append_blocks accepts plain markdown (headings, bullets, numbered lists, quotes, code fences)
@@ -145,6 +149,20 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
         },
       ),
       tool(
+        "comment_on_block",
+        "Start a NEW comment thread anchored to a specific block of the page (shows up next to that block, like a highlight comment). Use this to answer or annotate at a specific location.",
+        {
+          block_id: z.string().describe("The block id from the page listing"),
+          text: z.string().describe("Plain-text comment"),
+        },
+        async ({ block_id, text }) => {
+          const realId = resolveBlockId(block_id);
+          if (!realId) return unknownBlock(block_id);
+          await createBlockComment(realId, text);
+          return textResult("Comment posted on block.");
+        },
+      ),
+      tool(
         "refetch_page",
         "Re-fetch the page's current blocks (use after editing, or if a quote seems stale).",
         {},
@@ -186,6 +204,7 @@ export async function runAgent(input: AgentRunInput): Promise<void> {
         "mcp__notion__append_blocks",
         "mcp__notion__update_block",
         "mcp__notion__comment_on_page",
+        "mcp__notion__comment_on_block",
         "mcp__notion__refetch_page",
         "WebSearch",
         "WebFetch",
