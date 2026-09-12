@@ -2,7 +2,14 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { discoverPages, getPageTitle, type WatchPage } from "./notion.js";
-import { checkPage, createWatcher, persist, type Watcher } from "./watcher.js";
+import {
+  checkPage,
+  checkThread,
+  createWatcher,
+  persist,
+  type CommentParent,
+  type Watcher,
+} from "./watcher.js";
 
 // Webhook mode: instead of polling, Notion POSTs a comment.created event and we
 // immediately re-check the affected page. Requires a public HTTPS URL (e.g. a
@@ -23,6 +30,34 @@ function extractPageId(body: Record<string, unknown>): string | undefined {
   const entity = body.entity as Record<string, unknown> | undefined;
   if (entity?.type === "page" && typeof entity.id === "string") return entity.id;
   return undefined;
+}
+
+/**
+ * The block or page the new comment is anchored to. Documented shape is
+ * data.parent = { id, type: "block" | "page" }; the comment object's own
+ * { type: "block_id", block_id } form is accepted too. Undefined means the
+ * caller must fall back to a full page sweep.
+ */
+function extractParent(body: Record<string, unknown>): CommentParent | undefined {
+  const data = (body.data ?? {}) as Record<string, unknown>;
+  const parent = data.parent as Record<string, unknown> | undefined;
+  if (!parent) return undefined;
+  const type = String(parent.type ?? "");
+  if (type === "block" || type === "page") {
+    if (typeof parent.id === "string") return { id: parent.id, type };
+  }
+  if (type === "block_id" && typeof parent.block_id === "string")
+    return { id: parent.block_id, type: "block" };
+  if (type === "page_id" && typeof parent.page_id === "string")
+    return { id: parent.page_id, type: "page" };
+  return undefined;
+}
+
+function eventAuthorIds(body: Record<string, unknown>): string[] {
+  const authors = Array.isArray(body.authors) ? (body.authors as unknown[]) : [];
+  return authors
+    .map((a) => (a as Record<string, unknown>).id)
+    .filter((id): id is string => typeof id === "string");
 }
 
 function verifySignature(rawBody: string, header: string | undefined): boolean {
@@ -135,6 +170,10 @@ async function main(): Promise<void> {
 
       if (body.type !== "comment.created") return;
 
+      // The bot's own replies come back as events; sweeping for them would
+      // only delay the next real trigger in the queue.
+      if (eventAuthorIds(body).some((id) => normalize(id) === normalize(watcher.botId))) return;
+
       const pageId = extractPageId(body);
       if (!pageId) {
         console.log("[webhook] comment.created without a page id; checking all watched pages");
@@ -162,14 +201,19 @@ async function main(): Promise<void> {
         return; // event for a page we don't watch
       }
 
+      const parent = extractParent(body);
+      if (!parent) console.log("[webhook] event without a usable parent; full sweep:", body.data);
+
       enqueue(async (w) => {
         let title = titleCache.get(normalized);
         if (!title) {
           title = await getPageTitle(pageId);
           titleCache.set(normalized, title);
         }
+        // Silent indexing must cover the whole page, so it always sweeps.
         const silent = needsSilentIndex.has(normalized);
-        await checkPage(w, { id: pageId, title }, !silent);
+        if (parent && !silent) await checkThread(w, { id: pageId, title }, parent);
+        else await checkPage(w, { id: pageId, title }, !silent);
         if (silent) needsSilentIndex.delete(normalized);
       });
     });

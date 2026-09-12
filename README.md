@@ -121,6 +121,11 @@ that reacts to Notion `comment.created` events instead of polling:
    the verification field in the integration settings. Also put it in
    `NOTION_WEBHOOK_SECRET` in `.env` and restart to enable signature checks.
 
-On each event the server re-checks just the affected page, so responses start
-within seconds instead of a poll interval. The `.state.json` dedupe is shared
-with the poller — run one mode at a time.
+On each event the server reads just the thread the new comment belongs to
+(the event names its block or page), and fetches the page only if the comment
+triggers a run, so responses start within a few seconds instead of a poll
+interval or a full per-block comment sweep. The agent then sees the page, the
+triggering thread, and page-level threads — not threads on other blocks; put
+"read all comments" in the request to have it sweep every thread. Events for
+the bot's own comments are ignored. The `.state.json` dedupe is shared with
+the poller — run one mode at a time.
