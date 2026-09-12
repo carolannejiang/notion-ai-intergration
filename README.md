@@ -43,6 +43,11 @@ Optional settings in `.env`:
 - `WATCH_PAGE_IDS` — comma-separated page IDs to watch (the 32-char hex ID from
   the page URL). If empty, the agent auto-discovers the most recently edited
   pages shared with the integration (`MAX_DISCOVERED_PAGES`, default 5).
+- `MEMORY_PAGE_ID` — a Notion page (connected to the integration) the agent
+  uses as long-term memory: it re-reads the page's bullets on every run and can
+  add notes with a `remember` tool (decisions, your preferences, looked-up
+  facts). You can edit or delete notes there. Oldest notes drop off past
+  `MEMORY_MAX_NOTES` (default 100). Unset = no memory.
 - `AGENT_TRIGGER` — the summoning phrase (default `/agent`).
 - `POLL_INTERVAL_MS` — poll cadence (default 60s).
 
@@ -69,15 +74,22 @@ page-level comment box:
 The agent replies in the same thread; if the comment asked for a change, it also
 edits the page (replacing a block's text or inserting new markdown blocks).
 
+Once the agent has replied in a thread, that thread is a continuous chat: a later
+reply there runs the agent if it starts with `/` (e.g. `/ok, now shorten it`), with
+the whole thread as context. Replies without a leading `/` are left alone, so
+others can add context to the thread without summoning the agent. Start a new
+thread with `/agent` (or an @mention) to begin a fresh conversation.
+
 ## How it works
 
 - Poller (`src/index.ts`): every interval, fetch each watched page's block tree,
   list comments on the page and every block (inline comments attach to blocks),
-  and diff against `.state.json`. New comments matching the trigger (and not
-  authored by the bot itself) start an agent run.
+  and diff against `.state.json`. New comments matching the trigger, or starting with
+  `/` in a thread the bot has already replied in (and not authored by the bot
+  itself), start an agent run.
 - Agent (`src/agent.ts`): a Claude Agent SDK run with in-process MCP tools —
-  `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`,
-  `refetch_page` — plus read-only web access (`WebSearch`/`WebFetch`);
+  `reply_to_comment`, `append_blocks`, `update_block`, `comment_on_page`, `comment_on_block`,
+  `refetch_page`, and `remember` when `MEMORY_PAGE_ID` is set — plus read-only web access (`WebSearch`/`WebFetch`);
   everything else (shell, files) is disallowed. If the
   model doesn't reply in-thread itself, its final text is posted as the reply
   so a summons never goes unanswered.
@@ -114,6 +126,11 @@ that reacts to Notion `comment.created` events instead of polling:
    the verification field in the integration settings. Also put it in
    `NOTION_WEBHOOK_SECRET` in `.env` and restart to enable signature checks.
 
-On each event the server re-checks just the affected page, so responses start
-within seconds instead of a poll interval. The `.state.json` dedupe is shared
-with the poller — run one mode at a time.
+On each event the server reads just the thread the new comment belongs to
+(the event names its block or page), and fetches the page only if the comment
+triggers a run, so responses start within a few seconds instead of a poll
+interval or a full per-block comment sweep. The agent then sees the page, the
+triggering thread, and page-level threads — not threads on other blocks; put
+"read all comments" in the request to have it sweep every thread. Events for
+the bot's own comments are ignored. The `.state.json` dedupe is shared with
+the poller — run one mode at a time.

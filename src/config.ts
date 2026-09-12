@@ -28,4 +28,7 @@ export const config = {
   webhookPort: numeric("WEBHOOK_PORT", numeric("PORT", 8787)),
   webhookSecret: process.env.NOTION_WEBHOOK_SECRET || undefined,
   stateFile: process.env.STATE_FILE ?? fileURLToPath(new URL("../.state.json", import.meta.url)),
+  /** Notion page the agent keeps its notes on; unset disables memory. */
+  memoryPageId: process.env.MEMORY_PAGE_ID || undefined,
+  memoryMaxNotes: numeric("MEMORY_MAX_NOTES", 100),
 };
